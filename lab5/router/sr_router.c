@@ -67,7 +67,15 @@ void sr_init(struct sr_instance *sr)
  *
  *---------------------------------------------------------------------*/
 
+
+
 void handleICMP(struct sr_instance *sr, char *interface, uint8_t *packet, int type, int code)
+/*IMPORTANT TYPE/CODE COMBINATIONS:
+Echo reply: type 0 (code 0)
+Destination Net Unreachable: type 3, code 0
+Destination Host Unreachable: type 3, code 1
+Destination Port Unreachable: type 3, code 3
+Time exceeded: type 11, code 0*/
 {
   sr_ip_hdr_t *ip_hd = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
   struct sr_if *sr_if_interface = sr_get_interface(sr, interface);
@@ -82,6 +90,8 @@ void handleICMP(struct sr_instance *sr, char *interface, uint8_t *packet, int ty
   send_ip_hdr->ip_p = ip_protocol_icmp;
   send_ip_hdr->ip_len = htons(send_len - sizeof(sr_ethernet_hdr_t));
   send_ip_hdr->ip_dst = ip_hd->ip_src;
+  
+
   if(type == 0)
   {
     printf("Creating echo response\n");
@@ -174,6 +184,7 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
 {
   sr_ethernet_hdr_t* ether_hdr_ip = (sr_ethernet_hdr_t*) packet;
   sr_ip_hdr_t *ip_hd = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+  print_addr_ip_int(ntohl(ip_hd->ip_dst));
 
   
   uint16_t recv = ip_hd->ip_sum;
@@ -190,80 +201,102 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
   struct sr_if *list = sr->if_list;
   int selfIP = 0;
 
-  while (list != NULL)
+  /*format of broadcast IP??*/
+  if((ip_hd->ip_dst) == (IP_BROAD))
   {
-    /* If IP in router's own interface*/
-    if (list->ip == ip_hd->ip_dst)
+    /*ip is broadcast ip*/
+    if(ip_hd->ip_p == ip_protocol_udp)
     {
-      printf("Own IP\n");
-      selfIP = 1;
 
-      if (ip_hd->ip_p == ip_protocol_icmp)
-      {
-        sr_icmp_hdr_t *icmp_hd = (sr_icmp_hdr_t *)(ip_hd + 1);
-        /*If packet is an echo request*/
-        if (icmp_hd->icmp_type == 8)
-        {
-          printf("Echo request\n");
-          /*Send ICMP echo response*/
-          handleICMP(sr, interface, packet, 0, 0);
-        }
-      }
-
-      else
-      /*Send ICMP destination port unreachable*/
-      {
-        handleICMP(sr, interface, packet, 3, 3);
-      }
     }
-    list = list->next;
-  }
+    
 
-  if (selfIP != 0)
-  {
-    return;
   }
-
-  printf("Not own IP\n");
-  /*If TTL == 1, send ICMP TTL Exceeded*/
-  if (ip_hd->ip_ttl == 1)
-  {
-    handleICMP(sr, interface, packet, 11, 0);
-  }
-
   else
+  /*old protocol*/
   {
-    struct sr_rt *rt_match = longest_match(sr, ip_hd->ip_dst);
 
-    if (rt_match == NULL)
+    while (list != NULL)
     {
-      /*Send ICMP destination network unreachable*/
-      handleICMP(sr, interface, packet, 3, 0);
+      /* If IP in router's own interface*/
+      if (list->ip == ip_hd->ip_dst)
+      {
+        printf("Own IP\n");
+        selfIP = 1;
+        /*if interface up: keep old logic?*/
+        if(sr_obtain_interface_status(sr, interface)
+        {
+          if (ip_hd->ip_p == ip_protocol_icmp)
+          {
+            sr_icmp_hdr_t *icmp_hd = (sr_icmp_hdr_t *)(ip_hd + 1);
+            /*If packet is an echo request*/
+            if (icmp_hd->icmp_type == 8)
+            {
+              printf("Echo request\n");
+              /*Send ICMP echo response*/
+              handleICMP(sr, interface, packet, 0, 0);
+            }
+          }
+
+          else
+          /*Send ICMP destination port unreachable*/
+          {
+            handleICMP(sr, interface, packet, 3, 3);
+          }
+        }
+        else
+        {
+          handleICMP(sr, interface, packet, 3, 0);
+        }
+      list = list->next;
     }
+
+    if (selfIP != 0)
+    {
+      return;
+    }
+
+    printf("Not own IP\n");
+    /*If TTL == 1, send ICMP TTL Exceeded*/
+    if (ip_hd->ip_ttl == 1)
+    {
+      handleICMP(sr, interface, packet, 11, 0);
+    }
+
     else
     {
-      /*Change IP header TTL, checksum*/
-      sr_ip_hdr_t *send_ip_hdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-      send_ip_hdr->ip_ttl = send_ip_hdr->ip_ttl - 1;
-      send_ip_hdr->ip_sum = 0;
-      send_ip_hdr->ip_sum = cksum(send_ip_hdr, sizeof(sr_ip_hdr_t));
-      
-      /*Change ethernet header: Source MAC, Destination MAC*/
-      sr_ethernet_hdr_t *send_ethernet_hdr = (sr_ethernet_hdr_t *)packet;
-      memcpy(send_ethernet_hdr->ether_shost, sr_get_interface(sr, rt_match->interface)->addr, ETHER_ADDR_LEN);
+      struct sr_rt *rt_match = longest_match(sr, ip_hd->ip_dst);
 
-      struct sr_arpentry *arp_entry = sr_arpcache_lookup((&sr->cache), rt_match->gw.s_addr);
-      uint8_t *dest = arp_entry->mac;
-      if (dest)
+      if (rt_match == NULL)
       {
-        /*Forward packet to destination*/
-        memcpy(send_ethernet_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
-        sr_send_packet(sr, packet, len, rt_match->interface);
+        /*Send ICMP destination network unreachable*/
+        handleICMP(sr, interface, packet, 3, 0);
       }
       else
       {
-        /*Send packet to arpcache*/
-        sr_arpcache_queuereq(&sr->cache, rt_match->gw.s_addr, packet, len, rt_match->interface);
+        /*Change IP header TTL, checksum*/
+        sr_ip_hdr_t *send_ip_hdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+        send_ip_hdr->ip_ttl = send_ip_hdr->ip_ttl - 1;
+        send_ip_hdr->ip_sum = 0;
+        send_ip_hdr->ip_sum = cksum(send_ip_hdr, sizeof(sr_ip_hdr_t));
+        
+        /*Change ethernet header: Source MAC, Destination MAC*/
+        sr_ethernet_hdr_t *send_ethernet_hdr = (sr_ethernet_hdr_t *)packet;
+        memcpy(send_ethernet_hdr->ether_shost, sr_get_interface(sr, rt_match->interface)->addr, ETHER_ADDR_LEN);
+
+        struct sr_arpentry *arp_entry = sr_arpcache_lookup((&sr->cache), rt_match->gw.s_addr);
+        uint8_t *dest = arp_entry->mac;
+        if (dest)
+        {
+          /*Forward packet to destination*/
+          memcpy(send_ethernet_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+          sr_send_packet(sr, packet, len, rt_match->interface);
+        }
+        else
+        {
+          /*Send packet to arpcache*/
+          sr_arpcache_queuereq(&sr->cache, rt_match->gw.s_addr, packet, len, rt_match->interface);
+        }
       }
     }
   }
