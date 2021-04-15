@@ -202,15 +202,31 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
   int selfIP = 0;
 
   /*format of broadcast IP??*/
-  if((ip_hd->ip_dst) == (IP_BROAD))
+  if((ip_hd->ip_dst) == (IP_BROADCAST))
   {
     /*ip is broadcast ip*/
     if(ip_hd->ip_p == ip_protocol_udp)
     {
-
+      /*not sure how to cast this*/
+      sr_udp_hdr_t* udp_header = (sr_udp_hdr_t*) packet;
+      if((udp_header->port_src == 520) && (udp_header->port_dst == 520))
+      {
+        /*not sure how to cast this either*/
+        sr_rip_pkt_t* rip_hdr = (sr_rip_pkt_t*) packet;
+        if(rip_hdr->command == 1)
+        {
+          send_rip_response(sr);
+        }
+        else
+        {
+          update_route_table(sr, packet, len, interface);
+        }
+      }
+      else
+      {
+        handleICMP(sr, interface, packet, 3,  3);
+      }
     }
-    
-
   }
   else
   /*old protocol*/
@@ -288,9 +304,17 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
         uint8_t *dest = arp_entry->mac;
         if (dest)
         {
-          /*Forward packet to destination*/
-          memcpy(send_ethernet_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
-          sr_send_packet(sr, packet, len, rt_match->interface);
+          if(sr_obtain_interface_status(sr, interface))
+          {
+            /*Forward packet to destination*/
+            memcpy(send_ethernet_hdr->ether_dhost, arp_entry->mac, ETHER_ADDR_LEN);
+            sr_send_packet(sr, packet, len, rt_match->interface);
+          }
+          else
+          {
+            /*Send ICMP destination network unreachable*/
+            handleICMP(sr, interface, packet, 3, 0);
+          }
         }
         else
         {
