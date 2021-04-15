@@ -202,7 +202,9 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
   int selfIP = 0;
 
   /*format of broadcast IP??*/
-  if((ip_hd->ip_dst) == (IP_BROADCAST))
+  /*broadcast thing fixed */
+  uint32_t broadcast_ip = 0xffffffff;
+  if((ip_hd->ip_dst) == (broadcast_ip))
   {
     /*ip is broadcast ip*/
     if(ip_hd->ip_p == ip_protocol_udp)
