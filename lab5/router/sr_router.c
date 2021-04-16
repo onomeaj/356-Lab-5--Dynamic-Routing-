@@ -209,13 +209,13 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
     /*ip is broadcast ip*/
     if(ip_hd->ip_p == ip_protocol_udp)
     {
-      /*not sure how to cast this*/
-      sr_udp_hdr_t* udp_header = (sr_udp_hdr_t*) packet;
-      if((udp_header->port_src == 520) && (udp_header->port_dst == 520))
+      /*handled cast*/
+      sr_udp_hdr_t* udp_header = (sr_udp_hdr_t*) (packet + sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t));
+      if((udp_header->port_src == ntohs(520)) && (udp_header->port_dst == ntohs(520)))
       {
-        /*not sure how to cast this either*/
-        sr_rip_pkt_t* rip_hdr = (sr_rip_pkt_t*) packet;
-        if(rip_hdr->command == 1)
+        /*handled cast*/
+        sr_rip_pkt_t* rip_hdr = (sr_rip_pkt_t*) (packet + sizeof(sr_ethernet_hdr_t)+sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
+        if(rip_hdr->command == 1) /*if rip request*/
         {
           send_rip_response(sr);
         }
@@ -301,8 +301,11 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
         /*Change ethernet header: Source MAC, Destination MAC*/
         sr_ethernet_hdr_t *send_ethernet_hdr = (sr_ethernet_hdr_t *)packet;
         memcpy(send_ethernet_hdr->ether_shost, (sr_get_interface(sr, rt_match->interface)->addr), ETHER_ADDR_LEN);
-
-        struct sr_arpentry *arp_entry = sr_arpcache_lookup((&sr->cache), rt_match->gw.s_addr);
+        
+         /*conditional statemet here takes care of no 2 in handle packet*/
+        if(rt_match->gw.s_addr == 0)struct sr_arpentry *arp_entry = sr_arpcache_lookup((&sr->cache), ip_hd->ip_dst);
+        else struct sr_arpentry *arp_entry = sr_arpcache_lookup((&sr->cache), rt_match->gw.s_addr);
+        
         uint8_t *dest = arp_entry->mac;
         if (dest)
         {
@@ -321,7 +324,10 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
         else
         {
           /*Send packet to arpcache*/
-          sr_arpcache_queuereq(&sr->cache, rt_match->gw.s_addr, packet, len, rt_match->interface);
+          /*conditional statemet here takes care of no 2 in handle packet*/
+          if(rt_match->gw.s_addr == 0)sr_arpcache_queuereq(&sr->cache, ip_hd->ip_dst, packet, len, rt_match->interface);
+          else sr_arpcache_queuereq(&sr->cache, rt_match->gw.s_addr, packet, len, rt_match->interface);
+          
         }
       }
     }
