@@ -242,7 +242,7 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
         printf("Own IP\n");
         selfIP = 1;
         /*if interface up: keep old logic?*/
-        if(sr_obtain_interface_status(sr, interface)
+        if(sr_obtain_interface_status(sr, interface))
         {
           if (ip_hd->ip_p == ip_protocol_icmp)
           {
@@ -300,7 +300,7 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
         
         /*Change ethernet header: Source MAC, Destination MAC*/
         sr_ethernet_hdr_t *send_ethernet_hdr = (sr_ethernet_hdr_t *)packet;
-        memcpy(send_ethernet_hdr->ether_shost, sr_get_interface(sr, rt_match->interface)->addr, ETHER_ADDR_LEN);
+        memcpy(send_ethernet_hdr->ether_shost, (sr_get_interface(sr, rt_match->interface)->addr), ETHER_ADDR_LEN);
 
         struct sr_arpentry *arp_entry = sr_arpcache_lookup((&sr->cache), rt_match->gw.s_addr);
         uint8_t *dest = arp_entry->mac;
