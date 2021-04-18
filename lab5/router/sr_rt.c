@@ -230,48 +230,79 @@ void *sr_rip_timeout(void *sr_ptr) {
 
 void send_rip_request(struct sr_instance *sr){
     pthread_mutex_lock(&(sr->rt_locker));
+    struct sr_if * if_walker = sr->if_list;
     /* malloc space for packet*/
-    unsigned int send_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t) + sizeof(sr_rip_pkt_t);
-    uint8_t *outgoing_packet = (uint8_t *)malloc(send_len);
+    while (if_walker != NULL)
+    {
+        unsigned int send_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t) + sizeof(sr_rip_pkt_t);
+        uint8_t *outgoing_packet = (uint8_t *)malloc(send_len);
 
-    /*create ethernet header space*/
-    sr_ethernet_hdr_t *eth_hd = (sr_ethernet_hdr_t*)outgoing_packet;
-    memcpy(eth_hd->ether_dhost,  0xffffffffffff, sizeof(0xffffffffffff)); /*figure out format*/
+        /*create ethernet header space*/
+        sr_ethernet_hdr_t *eth_hd = (sr_ethernet_hdr_t*)outgoing_packet;
+        memset(eth_hd->ether_dhost,  0xff, 6); /*figure out format*/
+        
+        
+        memcpy(eth_hd->ether_shost, if_walker->addr, 6);
+        
+        eth_hd->ether_type = ethertype_ip;
+
+        /*create ip header space*/
+        sr_ip_hdr_t *send_ip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t));
+        send_ip_hdr->ip_dst = 0Xffffffff;
+        send_ip_hdr->ip_src = if_walker->ip;
+
+
+
+        
+        /*fill in rest ofip and other headers using definition*/
     
-    /*what goes here
-    eth_hd->ether_shost = ;
-    eth_hd->ether_type = ;
-    */
-
-    /*create ip header space*/
-    sr_ip_hdr_t *send_ip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t));
-    send_ip_hdr->ip_dst = 0Xffffffff;
-    /*fill in rest ofip and other headers*/
-   
-   
-    /*create udp header*/
-    sr_udp_hdr_t *udp_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-
-    /*create rip header*/
-    sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +sizeof(sr_udp_hdr_t));
     
-    
-    /* Lab5: Fill your code here */
-     /*rip request packet, command value different=1
-    how to send to all interfaces?
-    other values
-    how to cast ip.dst and eth dst?
-    does the packet have anydata or just all the headers?
-    no data
-    for loop for interface sending
-    */
+        /*create udp header*/
+        sr_udp_hdr_t *udp_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        udp_hdr->port_dst = htons(520);
+        udp_hdr->port_src = htons(520);
+        udp_hdr->udp_len = sizeof(sr_rip_pkt_t);
 
+
+        /*create rip header*/
+        sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +sizeof(sr_udp_hdr_t));
+        rip_hdr->command = 1;
+        rip_hdr->version = 2;
+
+
+
+
+
+
+
+
+
+        send_ip_hdr->ip_sum = 0;
+        send_ip_hdr->ip_sum = cksum(send_ip_hdr, sizeof(sr_ip_hdr_t));
+        
+        /* Lab5: Fill your code here */
+        /*rip request packet, command value different=1
+        how to send to all interfaces?
+        other values
+        how to cast ip.dst and eth dst?
+        does the packet have anydata or just all the headers?
+        no data
+        for loop for interface sending
+        */
+       if_walker = if_walker->next;
+    }
     pthread_mutex_unlock(&(sr->rt_locker));
 }
 
 void send_rip_response(struct sr_instance *sr){
     pthread_mutex_lock(&(sr->rt_locker));
-    /* Lab5: Fill your code here */
+
+    unsigned int send_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t) + sizeof(sr_rip_pkt_t);
+    uint8_t *outgoing_packet = (uint8_t *)malloc(send_len);
+    sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +sizeof(sr_udp_hdr_t));
+
+    /*handle rip_hdr->entries*/
+
    
 
     pthread_mutex_unlock(&(sr->rt_locker));
