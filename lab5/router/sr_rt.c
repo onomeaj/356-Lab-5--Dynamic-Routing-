@@ -222,7 +222,59 @@ void *sr_rip_timeout(void *sr_ptr) {
         sleep(5);
         pthread_mutex_lock(&(sr->rt_locker));
         /* Lab5: Fill your code here */
+        struct sr_rt *entry = sr->routing_table;
+        int i= 0;
+
+        /*TODO, dont forget!!!!!: Later when you want to add this entry back, you can change the metric, gw, 
+        iface directly instead of adding a new entry in your routing table. However, if you implement your 
+        code in this way, when you look up your routing table to forward a packet, you should ignore
+         all the entries with metric value == INFINITY.)*/
+
+        while(entry != NULL){
+            if(difftime(time(NULL), entry->updated_time) >= 20){
+                entry->metric = htonl(INFINITY); /*CONFIRM WE HAVE TO HTONL, will this remain infinity during comparison*/
+              
+            }
+            entry = entry->next;
+
+        }
         
+        struct sr_if * if_walker = sr->if_list;
+        while(if_walker != NULL){
+            if(sr_obtain_interface_status(sr, if_walker->name) == 0){
+                /*delete all the routing entries which use this interface to send packets*/\
+                /* is it any entry whose name == if_walker-> name, delete?
+                check the entry next hop if it matchthe interface and then deete?*/
+
+            }
+            else if(sr_obtain_interface_status(sr, if_walker->name) == 1){
+                /*make sure to confirm , all speculative atm*/
+
+                /*you should check whether your current routing table contains the subnet this interface 
+                is directly connected to.
+                If it contains, update the updated time. Otherwise, add this subnet to your routing table*/
+
+                struct sr_rt *current_rt = sr->routing_table;
+                while(current_rt!=NULL){
+
+                 if(if_walker->ip == current_rt ->dest.s_addr && if_walker->mask == current_rt->mask.s_addr){
+                    current_rt->updated_time = time(NULL);
+                 }
+                 else{
+                    struct in_addr dest;
+                    dest.s_addr = if_walker->ip;
+                    struct in_addr mask;
+                    mask.s_addr = if_walker->mask;
+                    struct in_addr gw;
+                    gw.s_addr = 0;
+                    sr_add_rt_entry(sr, dest, gw, mask , 0, if_walker->name);
+                 }
+           
+                }
+
+                
+            }
+        }
         pthread_mutex_unlock(&(sr->rt_locker));
     }
     return NULL;
@@ -236,6 +288,9 @@ void send_rip_request(struct sr_instance *sr){
     {
         unsigned int send_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t) + sizeof(sr_rip_pkt_t);
         uint8_t *outgoing_packet = (uint8_t *)malloc(send_len);
+        memset(outgoing_packet, 0, send_len);
+
+
 
         /*create ethernet header space*/
         sr_ethernet_hdr_t *eth_hd = (sr_ethernet_hdr_t*)outgoing_packet;
@@ -244,41 +299,40 @@ void send_rip_request(struct sr_instance *sr){
         
         memcpy(eth_hd->ether_shost, if_walker->addr, 6);
         
-        eth_hd->ether_type = ethertype_ip;
+        eth_hd->ether_type = htons(ethertype_ip);
 
         /*create ip header space*/
         sr_ip_hdr_t *send_ip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t));
-        send_ip_hdr->ip_dst = 0Xffffffff;
+        send_ip_hdr->ip_dst = 0xffffffff;
         send_ip_hdr->ip_src = if_walker->ip;
-
-
+        send_ip_hdr->ip_v = 4;
+        send_ip_hdr->ip_hl = 5;
+        send_ip_hdr->ip_p = ip_protocol_udp;
+        send_ip_hdr->ip_ttl = 64;
+        send_ip_hdr->ip_len = htons(send_len - sizeof(sr_ethernet_hdr_t));
+        send_ip_hdr->ip_sum = 0;
+        send_ip_hdr->ip_sum = cksum(send_ip_hdr, sizeof(sr_ip_hdr_t));
 
         
         /*fill in rest ofip and other headers using definition*/
-    
     
         /*create udp header*/
         sr_udp_hdr_t *udp_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
         udp_hdr->port_dst = htons(520);
         udp_hdr->port_src = htons(520);
-        udp_hdr->udp_len = sizeof(sr_rip_pkt_t);
+        udp_hdr->udp_len = htons(sizeof(sr_rip_pkt_t) + sizeof(sr_udp_hdr_t));
 
 
         /*create rip header*/
         sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +sizeof(sr_udp_hdr_t));
         rip_hdr->command = 1;
         rip_hdr->version = 2;
+        rip_hdr->entries[0].metric = htonl(INFINITY);
+        
 
+        sr_send_packet(sr, outgoing_packet, send_len, if_walker->name);
+        free(outgoing_packet);
 
-
-
-
-
-
-
-
-        send_ip_hdr->ip_sum = 0;
-        send_ip_hdr->ip_sum = cksum(send_ip_hdr, sizeof(sr_ip_hdr_t));
         
         /* Lab5: Fill your code here */
         /*rip request packet, command value different=1
@@ -297,12 +351,84 @@ void send_rip_request(struct sr_instance *sr){
 void send_rip_response(struct sr_instance *sr){
     pthread_mutex_lock(&(sr->rt_locker));
 
-    unsigned int send_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t) + sizeof(sr_rip_pkt_t);
-    uint8_t *outgoing_packet = (uint8_t *)malloc(send_len);
-    sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +sizeof(sr_udp_hdr_t));
+     struct sr_if * if_walker = sr->if_list;
+    /* malloc space for packet*/
+    while (if_walker != NULL)
+    {
+        unsigned int send_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t) + sizeof(sr_rip_pkt_t);
+        uint8_t *outgoing_packet = (uint8_t *)malloc(send_len);
+        memset(outgoing_packet, 0, send_len);
 
-    /*handle rip_hdr->entries*/
 
+
+        /*create ethernet header space*/
+        sr_ethernet_hdr_t *eth_hd = (sr_ethernet_hdr_t*)outgoing_packet;
+        memset(eth_hd->ether_dhost,  0xff, 6); /*figure out format*/
+        
+        
+        memcpy(eth_hd->ether_shost, if_walker->addr, 6);
+        
+        eth_hd->ether_type = htons(ethertype_ip);
+
+        /*create ip header space*/
+        sr_ip_hdr_t *send_ip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t));
+        send_ip_hdr->ip_dst = 0xffffffff;
+        send_ip_hdr->ip_src = if_walker->ip;
+        send_ip_hdr->ip_v = 4;
+        send_ip_hdr->ip_hl = 5;
+        send_ip_hdr->ip_p = ip_protocol_udp;
+        send_ip_hdr->ip_ttl = 64;
+        send_ip_hdr->ip_len = htons(send_len - sizeof(sr_ethernet_hdr_t));
+        send_ip_hdr->ip_sum = 0;
+        send_ip_hdr->ip_sum = cksum(send_ip_hdr, sizeof(sr_ip_hdr_t));
+
+        
+        /*fill in rest ofip and other headers using definition*/
+    
+        /*create udp header*/
+        sr_udp_hdr_t *udp_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        udp_hdr->port_dst = htons(520);
+        udp_hdr->port_src = htons(520);
+        udp_hdr->udp_len = htons(sizeof(sr_rip_pkt_t) + sizeof(sr_udp_hdr_t));
+
+
+        /*create rip header*/
+        sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +sizeof(sr_udp_hdr_t));
+        rip_hdr->command = 2;
+        rip_hdr->version = 2;
+
+        struct sr_rt *entry = sr->routing_table;
+        int index = 0;
+        while(entry!= NULL){
+            if(strcmp(entry->interface,if_walker->name) != 0 || (time(NULL) - entry->updated_time >= 20)){
+            rip_hdr->entries[index].afi = htons(2);
+            rip_hdr->entries[index].address = entry->dest.s_addr;
+            rip_hdr->entries[index].mask = entry->mask.s_addr;
+            rip_hdr->entries[index].metric = htonl(entry->metric);
+            rip_hdr->entries[index].next_hop = entry->gw.s_addr;
+            entry = entry->next;
+            index++;
+            }
+            
+            
+        }
+        
+        
+        sr_send_packet(sr, outgoing_packet, send_len, if_walker->name);
+        free(outgoing_packet);
+
+        
+        /* Lab5: Fill your code here */
+        /*rip request packet, command value different=1
+        how to send to all interfaces?
+        other values
+        how to cast ip.dst and eth dst?
+        does the packet have anydata or just all the headers?
+        no data
+        for loop for interface sending
+        */
+       if_walker = if_walker->next;
+    }
    
 
     pthread_mutex_unlock(&(sr->rt_locker));
