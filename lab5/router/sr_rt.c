@@ -467,16 +467,31 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
             {
                 
                 
-                /*if packet is from same router as the entry*/
+                /*if packet is from same router as the entry -- CHECK THAT THIS IS RIGHT*/
+                if(rt_entry->gw.s_addr == ip_hd->ip_src)
+                {
                     /*update updated time and metric*/
                     /*says to delete if metric is infinity, but we can just set it as infinity and change it later when we get new response*/
                     rt_entry->updated_time = time(NULL);
                     rt_entry->metric = currentMetric;
+                    updatedRT = 1;
+                }
+                else
+                {
+                    if(currentMetric < rt_entry->metric)
+                    {
+                        rt_entry->gw.s_addr = ip_hd->ip_src;
+                        rt_entry->mask.s_addr = currentEntry->mask;
+                        memset(rt_entry->interface, interface, sizeof(interface));
+                        updatedRT = 1;
+                    }
 
                 /*else: 
                     Otherwise, compare the metric and the current metric in this entry. 
                     If metric < current metric in routing table, 
                     updating all the information in the routing entry*/
+
+                }
                 
 
 
@@ -490,7 +505,13 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
                 struct in_addr gw;
                 gw.s_addr = ip_hd->ip_src;
                 sr_add_rt_entry(sr, dest, gw, mask, currentMetric, interface);
+                updatedRT = 1;
             }
+            if(updatedRT)
+            {
+                send_rip_response(sr);
+            }
+            rt_entry = rt_entry->next;
         }
 
     }
