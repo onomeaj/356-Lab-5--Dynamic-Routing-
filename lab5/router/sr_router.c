@@ -76,8 +76,9 @@ Destination Port Unreachable: type 3, code 3
 Time exceeded: type 11, code 0*/
 {
   sr_ip_hdr_t *ip_hd = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+  memset(ip_hd, 0, sizeof(sr_ip_hdr_t));
   struct sr_if *sr_if_interface = sr_get_interface(sr, interface);
-  unsigned int send_len = sizeof(sr_ethernet_hdr_t) + ntohs(ip_hd->ip_len);
+  unsigned int send_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +sizeof(sr_icmp_hdr_t);
   uint8_t *send_packet = (uint8_t *)malloc(send_len);
 
   /*CREATE IP HEADER*/
@@ -196,17 +197,20 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
   if ((ip_hd->ip_dst) == (broadcast_ip))
   {
     /*ip is broadcast ip*/
+    print_addr_ip((struct in_addr) {ip_hd->ip_dst});
     if (ip_hd->ip_p == ip_protocol_udp)
     {
       /*handled cast*/
       sr_udp_hdr_t *udp_header = (sr_udp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
       if ((udp_header->port_src == ntohs(520)) && (udp_header->port_dst == ntohs(520)))
       {
+        printf("RIP packet\n");
         /*handled cast*/
         sr_rip_pkt_t *rip_hdr = (sr_rip_pkt_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
         if (rip_hdr->command == 1) /*if rip request*/
         {
           send_rip_response(sr);
+          printf("sending RIP response\n");
         }
         else
         {
@@ -222,6 +226,7 @@ void sr_handleIP(struct sr_instance *sr, uint8_t *packet /* lent */, unsigned in
   else
   /*old protocol*/
   {
+    printf("previous routing protocol reached\n");
 
     while (list != NULL)
     {
