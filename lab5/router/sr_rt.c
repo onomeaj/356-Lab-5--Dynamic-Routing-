@@ -448,6 +448,7 @@ uint32_t min(uint32_t a, uint32_t b)
     }
 }
 struct sr_rt *longest_match(struct sr_instance *router, uint32_t ipaddr);
+
 void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface)
 {
     pthread_mutex_lock(&(sr->rt_locker));
@@ -478,23 +479,22 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
                 }
                 else
                 {
-                    if(currentMetric < rt_entry->metric)
-                    {
-                        rt_entry->gw.s_addr = ip_hd->ip_src;
-                        rt_entry->mask.s_addr = currentEntry->mask;
-                        memset(rt_entry->interface, interface, sizeof(interface));
-                        updatedRT = 1;
-                    }
 
-                /*else: 
+                    /*else: 
                     Otherwise, compare the metric and the current metric in this entry. 
                     If metric < current metric in routing table, 
                     updating all the information in the routing entry*/
 
-                }
+                    if(currentMetric < rt_entry->metric)
+                    {
+                        rt_entry->gw.s_addr = ip_hd->ip_src;
+                        rt_entry->mask.s_addr = currentEntry->mask;
+                        strcpy(rt_entry->interface, interface);
+                        updatedRT = 1;
+                    }
+
                 
-
-
+                }
             }
             else
             {
