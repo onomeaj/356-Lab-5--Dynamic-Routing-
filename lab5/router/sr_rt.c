@@ -436,10 +436,64 @@ void send_rip_response(struct sr_instance *sr)
     pthread_mutex_unlock(&(sr->rt_locker));
 }
 
+uint32_t min(uint32_t a, uint32_t b)
+{
+    if(a < b)
+    {
+        return a;
+    }
+    else
+    {
+        return b;
+    }
+}
+struct sr_rt *longest_match(struct sr_instance *router, uint32_t ipaddr);
 void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int len, char *interface)
 {
     pthread_mutex_lock(&(sr->rt_locker));
-    /* Lab5: Fill your code here */
+    sr_rip_pkt_t *rip_packet = (sr_rip_pkt_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
+    sr_ip_hdr_t *ip_hd = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+    int i;
+    for(i = 0; i < MAX_NUM_ENTRIES; i++)
+    {
+        int updatedRT = 0;
+        struct entry* currentEntry = &rip_packet->entries[i];
+        uint32_t currentMetric = min(currentEntry->metric+1, INFINITY);
+        struct sr_rt* rt_entry = sr->routing_table;
+
+        while(rt_entry != NULL)
+        {
+            if ((currentEntry->address & currentEntry->mask) == (rt_entry->dest.s_addr & rt_entry->mask.s_addr)) /*contains the entry*/
+            {
+                
+                
+                /*if packet is from same router as the entry*/
+                    /*update updated time and metric*/
+                    /*says to delete if metric is infinity, but we can just set it as infinity and change it later when we get new response*/
+                    rt_entry->updated_time = time(NULL);
+                    rt_entry->metric = currentMetric;
+
+                /*else: 
+                    Otherwise, compare the metric and the current metric in this entry. 
+                    If metric < current metric in routing table, 
+                    updating all the information in the routing entry*/
+                
+
+
+            }
+            else
+            {
+                struct in_addr dest;
+                dest.s_addr = currentEntry->address;
+                struct in_addr mask;
+                mask.s_addr = currentEntry->mask;
+                struct in_addr gw;
+                gw.s_addr = ip_hd->ip_src;
+                sr_add_rt_entry(sr, dest, gw, mask, currentMetric, interface);
+            }
+        }
+
+    }
 
     pthread_mutex_unlock(&(sr->rt_locker));
 }
