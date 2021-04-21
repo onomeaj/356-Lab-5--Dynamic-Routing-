@@ -238,7 +238,7 @@ void *sr_rip_timeout(void *sr_ptr)
         {
             if (difftime(time(NULL), entry->updated_time) >= 20)
             {
-                entry->metric = htonl(INFINITY); /*CONFIRM WE HAVE TO HTONL, will this remain infinity during comparison*/
+                entry->metric = INFINITY; /*CONFIRM WE HAVE TO HTONL, will this remain infinity during comparison*/
             }
             entry = entry->next;
         }
@@ -250,7 +250,16 @@ void *sr_rip_timeout(void *sr_ptr)
             {
                 /*delete all the routing entries which use this interface to send packets*/ /* is it any entry whose name == if_walker-> name, delete?
                 check the entry next hop if it matchthe interface and then deete?*/
+                struct sr_rt *entry_walker = sr->routing_table;
+                while(entry_walker != NULL)
+                {
+                    if(entry_walker->interface == if_walker->name)
+                    {
+                        entry_walker->metric = INFINITY;
+                    }
+                }
             }
+
             else if (sr_obtain_interface_status(sr, if_walker->name) == 1)
             {
                 /*make sure to confirm , all speculative atm*/
