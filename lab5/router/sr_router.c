@@ -162,7 +162,7 @@ struct sr_rt *longest_match(struct sr_instance *router, uint32_t ipaddr)
   int maxlen = 0;
   for (entry = router->routing_table; entry != NULL; entry = entry->next)
   {
-    if (((entry->dest.s_addr & entry->mask.s_addr) == (addr.s_addr & entry->mask.s_addr)) && (maxlen <= entry->mask.s_addr))
+    if (((entry->dest.s_addr & entry->mask.s_addr) == (addr.s_addr & entry->mask.s_addr)) && (maxlen <= entry->mask.s_addr) && entry->metric != INFINITY)
     {
       match = entry;
       maxlen = entry->mask.s_addr;
