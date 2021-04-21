@@ -257,6 +257,7 @@ void *sr_rip_timeout(void *sr_ptr)
                     {
                         entry_walker->metric = INFINITY;
                     }
+                    entry_walker = entry_walker->next;
                 }
             }
 
@@ -275,8 +276,9 @@ void *sr_rip_timeout(void *sr_ptr)
                     if ((entry->dest.s_addr & entry->mask.s_addr == if_walker->ip & if_walker->mask) && (entry->mask.s_addr == if_walker->mask))
                     {
                         entry->updated_time = time(NULL);
-                        int inRouting = 1;
+                        subnetInRouting = 1;
                     }
+                    entry = entry->next;
                 }
                 if(!subnetInRouting)
                 {
@@ -290,6 +292,7 @@ void *sr_rip_timeout(void *sr_ptr)
                 }
             }
         }
+        send_rip_response(sr);
         pthread_mutex_unlock(&(sr->rt_locker));
     }
     return NULL;
@@ -329,13 +332,13 @@ void send_rip_request(struct sr_instance *sr)
         /*fill in rest ofip and other headers using definition*/
 
         /*create udp header*/
-        sr_udp_hdr_t *udp_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        sr_udp_hdr_t *udp_hdr = (sr_udp_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
         udp_hdr->port_dst = htons(520);
         udp_hdr->port_src = htons(520);
         udp_hdr->udp_len = htons(sizeof(sr_rip_pkt_t) + sizeof(sr_udp_hdr_t));
 
         /*create rip header*/
-        sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
+        sr_rip_pkt_t *rip_hdr = (sr_rip_pkt_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
         rip_hdr->command = 1;
         rip_hdr->version = 2;
         rip_hdr->entries[0].metric = htonl(INFINITY);
@@ -392,13 +395,13 @@ void send_rip_response(struct sr_instance *sr)
         /*fill in rest ofip and other headers using definition*/
 
         /*create udp header*/
-        sr_udp_hdr_t *udp_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        sr_udp_hdr_t *udp_hdr = (sr_udp_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
         udp_hdr->port_dst = htons(520);
         udp_hdr->port_src = htons(520);
         udp_hdr->udp_len = htons(sizeof(sr_rip_pkt_t) + sizeof(sr_udp_hdr_t));
 
         /*create rip header*/
-        sr_rip_pkt_t *rip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
+        sr_rip_pkt_t *rip_hdr = (sr_rip_pkt_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
         rip_hdr->command = 2;
         rip_hdr->version = 2;
 
@@ -458,13 +461,13 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
     for(i = 0; i < MAX_NUM_ENTRIES; i++)
     {
         int updatedRT = 0;
-        struct entry* currentEntry = &rip_packet->entries[i];
-        uint32_t currentMetric = min(currentEntry->metric+1, INFINITY);
+        struct entry currentEntry = rip_packet->entries[i];
+        uint32_t currentMetric = min(currentEntry.metric+1, INFINITY);
         struct sr_rt* rt_entry = sr->routing_table;
 
         while(rt_entry != NULL)
         {
-            if ((currentEntry->address & currentEntry->mask) == (rt_entry->dest.s_addr & rt_entry->mask.s_addr)) /*contains the entry*/
+            if ((currentEntry.address & currentEntry.mask) == (rt_entry->dest.s_addr & rt_entry->mask.s_addr)) /*contains the entry*/
             {
                 
                 
@@ -475,7 +478,6 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
                     /*says to delete if metric is infinity, but we can just set it as infinity and change it later when we get new response*/
                     rt_entry->updated_time = time(NULL);
                     rt_entry->metric = currentMetric;
-                    updatedRT = 1;
                 }
                 else
                 {
@@ -488,7 +490,7 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
                     if(currentMetric < rt_entry->metric)
                     {
                         rt_entry->gw.s_addr = ip_hd->ip_src;
-                        rt_entry->mask.s_addr = currentEntry->mask;
+                        rt_entry->mask.s_addr = currentEntry.mask;
                         strcpy(rt_entry->interface, interface);
                         updatedRT = 1;
                     }
@@ -499,9 +501,9 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
             else
             {
                 struct in_addr dest;
-                dest.s_addr = currentEntry->address;
+                dest.s_addr = currentEntry.address;
                 struct in_addr mask;
-                mask.s_addr = currentEntry->mask;
+                mask.s_addr = currentEntry.mask;
                 struct in_addr gw;
                 gw.s_addr = ip_hd->ip_src;
                 sr_add_rt_entry(sr, dest, gw, mask, currentMetric, interface);
