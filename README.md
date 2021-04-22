@@ -1,8 +1,18 @@
 # 356-Lab-5--Dynamic-Routing-
-TODO: Complete update routing table function, keeping in mind that we only need to 
-add an entry if it's not already in the routing table --
-some entries will be in the routing table but have a metric value
-of INFINITY
+To run manually (each in a separate tab/terminal instance):
+ IN LAB5 DIRECTORY:
+./run_pox.sh
+./run_mininet.sh
 
-TODO2: Determine priorities for office hours 4/21 (signed up for 5:30-5:50PM)
+IN ROUTER DIRECTORY:
+
+no segfaults happening:
+./sr -t 300 -s 127.0.0.1 -p 8888 -v vhost1
+./sr -t 300 -s 127.0.0.1 -p 8888 -v vhost2
+./sr -t 300 -s 127.0.0.1 -p 8888 -v vhost3
+
+segfaults are/may be occurring:
+valgrind --leak-check=full ./sr -t 300 -s 127.0.0.1 -p 8888 -v vhost1
+valgrind --leak-check=full ./sr -t 300 -s 127.0.0.1 -p 8888 -v vhost2
+valgrind --leak-check=full ./sr -t 300 -s 127.0.0.1 -p 8888 -v vhost3
 
