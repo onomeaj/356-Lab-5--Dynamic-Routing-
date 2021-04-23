@@ -224,6 +224,7 @@ void *sr_rip_timeout(void *sr_ptr)
     while (1)
     {
         sleep(5);
+        sr_print_routing_table(sr);
         pthread_mutex_lock(&(sr->rt_locker));
         /* Lab5: Fill your code here */
         struct sr_rt *entry = sr->routing_table;
@@ -243,13 +244,13 @@ void *sr_rip_timeout(void *sr_ptr)
         }
 
         struct sr_if *if_walker = sr->if_list;
-        while (if_walker != NULL)
+        while (if_walker)
         {
             if (sr_obtain_interface_status(sr, if_walker->name) == 0)
             {
                 /*delete all the routing entries which use this interface to send packets*/ /* is it any entry whose name == if_walker-> name, delete?
                 check the entry next hop if it matchthe interface and then deete?*/
-                struct sr_rt *entry_walker = sr->routing_table;
+                /*struct sr_rt *entry_walker = sr->routing_table;
                 while(entry_walker != NULL)
                 {
                     if(entry_walker->interface == if_walker->name)
@@ -258,16 +259,27 @@ void *sr_rip_timeout(void *sr_ptr)
                     }
                     entry_walker = entry_walker->next;
                 }
+                */
+
+                entry = sr->routing_table;
+                while(entry != NULL)
+                {
+                    if(entry->interface == if_walker->name)
+                    {
+                        entry->metric = INFINITY;
+                    }
+                    entry = entry->next;
+                }
             }
 
-            else if (sr_obtain_interface_status(sr, if_walker->name) == 1)
-            {
+           /* else if (sr_obtain_interface_status(sr, if_walker->name) == 1)
+            {*/
                 /*make sure to confirm , all speculative atm*/
 
                 /*you should check whether your current routing table contains the subnet this interface 
                 is directly connected to.
                 If it contains, update the updated time. Otherwise, add this subnet to your routing table*/
-                struct sr_rt *entry = sr->routing_table;
+            /*    struct sr_rt *entry = sr->routing_table;
 
                 int subnetInRouting = 0;
                 while (entry != NULL)
@@ -290,9 +302,32 @@ void *sr_rip_timeout(void *sr_ptr)
                     sr_add_rt_entry(sr, dest, gw, mask, 0, if_walker->name);
                 }
             }
-        }
-        pthread_mutex_unlock(&(sr->rt_locker));
+            */
+           else{
+               struct in_addr dest;
+                dest.s_addr = if_walker->ip & if_walker->mask;
+
+                /** Set metric to 0 **/
+                entry = sr->routing_table;
+                while(entry != NULL) {
+                    if (entry->dest.s_addr == dest.s_addr) {
+                        entry->metric = 0;
+                        entry->updated_time = time(NULL);
+                        entry->gw.s_addr = 0;
+                        strncpy(entry->interface, if_walker->name, sr_IFACE_NAMELEN);
+                    }
+                    entry = entry->next;
+                }
+                
+            }
+			
+			if_walker = if_walker->next;
+
+           }
+        
+        
         send_rip_response(sr);
+        pthread_mutex_unlock(&(sr->rt_locker));
     }
     return NULL;
 }
@@ -318,12 +353,12 @@ void send_rip_request(struct sr_instance *sr)
 
         /*create ip header space*/
         sr_ip_hdr_t *send_ip_hdr = (sr_ip_hdr_t *)(outgoing_packet + sizeof(sr_ethernet_hdr_t));
-        send_ip_hdr->ip_dst = 0xffffffff;
+        send_ip_hdr->ip_dst = htonl(0xffffffff);
         send_ip_hdr->ip_src = if_walker->ip;
         send_ip_hdr->ip_v = 4;
         send_ip_hdr->ip_hl = 5;
         send_ip_hdr->ip_p = ip_protocol_udp;
-        send_ip_hdr->ip_ttl = 64;
+        send_ip_hdr->ip_ttl = 16; /*16 or 64*/
         send_ip_hdr->ip_len = htons(send_len - sizeof(sr_ethernet_hdr_t));
         send_ip_hdr->ip_sum = 0;
         send_ip_hdr->ip_sum = cksum(send_ip_hdr, sizeof(sr_ip_hdr_t));
@@ -341,6 +376,21 @@ void send_rip_request(struct sr_instance *sr)
         rip_hdr->command = 1;
         rip_hdr->version = 2;
         rip_hdr->entries[0].metric = htonl(INFINITY);
+
+
+        struct sr_rt* rt1 = sr->routing_table;
+        int counter = 0;
+
+        while (rt1 != NULL) {
+            rip_hdr->entries[counter].address = rt1->dest.s_addr;
+            rip_hdr->entries[counter].mask = rt1->mask.s_addr;
+            rip_hdr->entries[counter].next_hop = rt1->gw.s_addr;
+            rip_hdr->entries[counter].metric = htonl(0);
+            rip_hdr->entries[counter].afi = htons(2);
+            rip_hdr->entries[counter].tag = htons(0);
+            counter += 1;
+            rt1 = rt1->next;
+        }
 
         sr_send_packet(sr, outgoing_packet, send_len, if_walker->name);
         free(outgoing_packet);
@@ -425,15 +475,7 @@ void send_rip_response(struct sr_instance *sr)
         printf("rip response sent\n");
         free(outgoing_packet);
 
-        /* Lab5: Fill your code here */
-        /*rip request packet, command value different=1
-        how to send to all interfaces?
-        other values
-        how to cast ip.dst and eth dst?
-        does the packet have anydata or just all the headers?
-        no data
-        for loop for interface sending
-        */
+        
         if_walker = if_walker->next;
         
     }
@@ -467,9 +509,17 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
     sr_rip_pkt_t *rip_packet = (sr_rip_pkt_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_udp_hdr_t));
     
     int i;
+    struct sr_if* if_walker = sr_get_interface(sr, interface);
+
     for(i = 0; i < MAX_NUM_ENTRIES; i++)
     {
+
+       
         struct entry currentEntry = rip_packet->entries[i];
+
+        if((if_walker->ip) == (currentEntry.next_hop)){
+            continue;
+        }
         printf("looping through entries, current entry: %d\n", i);
         int updatedRT = 0;
         if(currentEntry.afi == 0)
@@ -487,10 +537,14 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
             if ((currentEntry.address & currentEntry.mask) == (rt_entry->dest.s_addr & rt_entry->mask.s_addr)) /*contains the entry*/
             {
                 printf("contains entry\n");
+                struct in_addr ipAdd;
+                ipAdd.s_addr = ip_hd->ip_src;
                 
                 
                 /*if packet is from same router as the entry -- CHECK THAT THIS IS RIGHT*/
-                if(rt_entry->gw.s_addr == ip_hd->ip_src)
+                /*if(rt_entry->gw.s_addr == ip_hd->ip_src)*/
+                if(rt_entry->gw.s_addr == ipAdd.s_addr)
+
                 {
                     /*update updated time and metric*/
                     /*says to delete if metric is infinity, but we can just set it as infinity and change it later when we get new response*/
@@ -508,7 +562,7 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
 
                     if(currentMetric < rt_entry->metric)
                     {
-                        rt_entry->gw.s_addr = ip_hd->ip_src;
+                        rt_entry->gw.s_addr = ipAdd.s_addr;/*CHANGED FROM IP_HD*/
                         rt_entry->mask.s_addr = currentEntry.mask;
                         strcpy(rt_entry->interface, interface);
                         updatedRT = 1;
@@ -527,21 +581,21 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
                 mask.s_addr = currentEntry.mask;
                 struct in_addr gw;
                 gw.s_addr = ip_hd->ip_src;
-                pthread_mutex_unlock(&(sr->rt_locker));
+                
                 printf("adding entry\n");
                 sr_add_rt_entry(sr, dest, gw, mask, currentMetric, interface);
                 printf("entry added\n");
-                pthread_mutex_lock(&(sr->rt_locker));
+               
                 printf("re-acquired lock\n");
                 updatedRT = 1;
             }
             if(updatedRT)
             {
                 printf("updated routing table\n");
-                pthread_mutex_unlock(&(sr->rt_locker));
+               
                 printf("sending rip response\n");
                 send_rip_response(sr);
-                pthread_mutex_lock(&(sr->rt_locker));
+                
                 printf("rip response sent\n");
             }
             rt_entry = rt_entry->next;
@@ -551,3 +605,5 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
 
     pthread_mutex_unlock(&(sr->rt_locker));
 }
+
+
