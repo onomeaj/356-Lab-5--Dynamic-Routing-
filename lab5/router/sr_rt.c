@@ -272,15 +272,14 @@ void *sr_rip_timeout(void *sr_ptr)
                 }
             }
 
-           /* else if (sr_obtain_interface_status(sr, if_walker->name) == 1)
-            {*/
+            else if (sr_obtain_interface_status(sr, if_walker->name) == 1)
+            {
                 /*make sure to confirm , all speculative atm*/
 
                 /*you should check whether your current routing table contains the subnet this interface 
                 is directly connected to.
                 If it contains, update the updated time. Otherwise, add this subnet to your routing table*/
-            /*    struct sr_rt *entry = sr->routing_table;
-
+                entry = sr->routing_table;
                 int subnetInRouting = 0;
                 while (entry != NULL)
                 {
@@ -302,24 +301,8 @@ void *sr_rip_timeout(void *sr_ptr)
                     sr_add_rt_entry(sr, dest, gw, mask, 0, if_walker->name);
                 }
             }
-            */
-           else{
-               struct in_addr dest;
-                dest.s_addr = if_walker->ip & if_walker->mask;
-
-                /** Set metric to 0 **/
-                entry = sr->routing_table;
-                while(entry != NULL) {
-                    if (entry->dest.s_addr == dest.s_addr) {
-                        entry->metric = 0;
-                        entry->updated_time = time(NULL);
-                        entry->gw.s_addr = 0;
-                        strncpy(entry->interface, if_walker->name, sr_IFACE_NAMELEN);
-                    }
-                    entry = entry->next;
-                }
-                
-            }
+            
+        
 			
 			if_walker = if_walker->next;
 
@@ -605,5 +588,6 @@ void update_route_table(struct sr_instance *sr, uint8_t *packet, unsigned int le
 
     pthread_mutex_unlock(&(sr->rt_locker));
 }
+
 
 
